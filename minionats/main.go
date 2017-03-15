@@ -4,25 +4,26 @@ package main
 import (
 	// "io"
 	"log"
-	"os"
 	"fmt"
 	"runtime"
 	"encoding/json"
 	"net/url"
+	"flag"
 
 	"github.com/minio/minio-go"
 	nats "github.com/nats-io/go-nats"
+	"os"
 )
 
 func printMinion() {
 	log.Print(`Starting MinioNATS
 	         ,_---~~~~~----._
-	  _,,_,*^____      _____'''*g*\"*,                      MinioNATS Demo
-	 / __/ /'     ^.  /      \ ^@q   f                      Peter Miron
-	[  @f | @))    |  | @))   l  0 _/                       @petemiron
+	  _,,_,*^____      _____'''*g*\"*,
+	 / __/ /'     ^.  /      \ ^@q   f
+	[  @f | @))    |  | @))   l  0 _/
 	 \ /   \~____ / __ \_____/    \
-	 |           _l__l_           I                         @nats_io
-	 }          [______]           I                        nats.io
+	 |           _l__l_           I
+	 }          [______]           I
 	 ]            | | |            |
 	 ]             ~ ~             |
 	  |                            |
@@ -102,33 +103,58 @@ func getClient(endpoint string, accessKey string, secret string, encrypt bool) (
 }
 
 func main() {
-	printMinion()
+	localS3URL := flag.String("local", "",
+		"local S3 URL in format s3://accessKeyId:accessSecretKey@host:port")
+	remoteS3URL := flag.String("remote", "",
+		"remote S3 URL in format s3://accessKeyId:accessSecretKey@host:port")
+	natsURL := flag.String("nats", "nats://localhost:4222",
+		"NATS URL in format nats://user:password@host:port")
+	bucket := flag.String("bucket", "minio-nats-example", "bucket to test with")
+	region := flag.String("region", "us-east-1", "region to create and maintain bucket")
+	tmpDir := flag.String("tmpDir", "/tmp/", "temporary directory for copying files")
+
+
+	flag.Parse()
 
 	// assumes:
 	// 	1. Running minio server.
 	//	2. Running natsd server.
 	// open connection to remote s3 bucket.
-	bucket := "minio-nats-example"
-	region := "us-east-1"
+	if *localS3URL == "" || *remoteS3URL == "" {
+		flag.Usage()
+		log.Fatal("must specify both local and remote S3 connections")
+	}
+
+	// should be able to get started
+	printMinion()
 
 	// create remote client
-	remoteS3AccessKeyId := os.Getenv("MINIO_AWS_ACCESS_KEY_ID")
-	remoteS3SecretKey := os.Getenv("MINIO_AWS_SECRET_ACCESS_KEY")
+	remoteURL, err := url.Parse(*remoteS3URL)
 
-	s3RemoteClient := getClient("s3.amazonaws.com", remoteS3AccessKeyId, remoteS3SecretKey, true)
+	if err != nil {
+		log.Printf("error parsing remote '%s': %v\n", *remoteS3URL, err)
+	}
 
-	s3LocalClient := getClient("10.0.1.17:9000", "9W2392IOEBUAZH6PLCHA",
-		"g7XPw7gWdVoazRLoVfg1ZcV3SrcUSz3gwhUonTVC", false)
+	localURL, err := url.Parse(*localS3URL)
+	if err != nil {
+		log.Printf("error parsing local '%s': %v\n", *localS3URL, err)
+	}
+
+	remotePassword, _ := remoteURL.User.Password()
+	s3RemoteClient := getClient(remoteURL.Host, remoteURL.User.Username(), remotePassword, true)
+
+	localPassword, _ := localURL.User.Password()
+	s3LocalClient := getClient(localURL.Host, localURL.User.Username(), localPassword, false)
 
 	// create the bucket in both locations, if it doesn't exist
-	upsertBucket(*s3LocalClient, region, bucket)
-	upsertBucket(*s3RemoteClient, region, bucket)
+	upsertBucket(*s3LocalClient, *region, *bucket)
+	upsertBucket(*s3RemoteClient, *region, *bucket)
 
 	// add the notification interest
-	addNotification(*s3LocalClient, region, bucket)
+	addNotification(*s3LocalClient, *region, *bucket)
 
-	natsConnection, _ := nats.Connect("nats://localhost:4222")
-	log.Println("Connected to NATS")
+	natsConnection, _ := nats.Connect(*natsURL)
+	log.Println("Connected to NATS: %s", *natsURL)
 
 	// Subscribe to subject
 	log.Print("Subscribing to subject 'bucketevents'\n")
@@ -150,7 +176,7 @@ func main() {
 			}
 			switch record.EventName {
 			case "s3:ObjectCreated:Put":
-				localFileName := fmt.Sprintf("/tmp/%s", key)
+				localFileName := fmt.Sprintf("/%s/%s", *tmpDir, key)
 				log.Printf("syncing object: %s/%s\n", record.S3.Bucket.Name,
 					key)
 				err = s3LocalClient.FGetObject(record.S3.Bucket.Name, key,
@@ -159,13 +185,20 @@ func main() {
 					fmt.Printf("error saving file: %v\n", err)
 				}
 
-				_, err = s3RemoteClient.FPutObject(bucket, key, localFileName,
+				_, err = s3RemoteClient.FPutObject(*bucket, key, localFileName,
 					"application/octet-stream")
 				if err != nil {
-					fmt.Printf("error: %v\n", err)
+					fmt.Printf("error uploading file to remote %v\n", err)
 				}
+
+				// remove the file from the filesystem
+				err = os.Remove(localFileName)
+				if err != nil {
+					log.Printf("unable to delete tmp file %s, %v\n", localFileName, err)
+				}
+
 			case "s3:ObjectRemoved:Delete":
-				err = s3RemoteClient.RemoveObject(bucket, key)
+				err = s3RemoteClient.RemoveObject(*bucket, key)
 
 				if err != nil {
 					log.Printf("error deleting object: %v\n", err)
