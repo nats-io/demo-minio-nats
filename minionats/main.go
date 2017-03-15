@@ -9,10 +9,10 @@ import (
 	"encoding/json"
 	"net/url"
 	"flag"
+	"os"
 
 	"github.com/minio/minio-go"
 	nats "github.com/nats-io/go-nats"
-	"os"
 )
 
 func printMinion() {
@@ -93,12 +93,22 @@ func addNotification(s3Client minio.Client, region string, bucket string) {
 	}
 }
 
-func getClient(endpoint string, accessKey string, secret string, encrypt bool) (*minio.Client) {
-	client, err := minio.New(endpoint, accessKey, secret, encrypt)
+func getClient(uRL string, encrypt bool) (*minio.Client) {
+	// parse the string URL and return a minio client
+	pURL, err := url.Parse(uRL)
+
 	if err != nil {
-		log.Fatalf("unable to connect to %s: %v\n", endpoint, err)
+		log.Printf("error parsing url '%s': %v\n", uRL, err)
 	}
-	log.Printf("connected to: %s\n", endpoint)
+
+	password, _ := pURL.User.Password()
+
+	client, err := minio.New(pURL.Host, pURL.User.Username(), password, encrypt)
+	if err != nil {
+		log.Fatalf("unable to connect to %s: %v\n", pURL.Host, err)
+	}
+
+	log.Printf("connected to: %s\n", pURL.Host)
 	return client
 }
 
@@ -129,22 +139,10 @@ func main() {
 	printMinion()
 
 	// create remote client
-	remoteURL, err := url.Parse(*remoteS3URL)
+	s3RemoteClient := getClient(*remoteS3URL, true)
 
-	if err != nil {
-		log.Printf("error parsing remote '%s': %v\n", *remoteS3URL, err)
-	}
-
-	localURL, err := url.Parse(*localS3URL)
-	if err != nil {
-		log.Printf("error parsing local '%s': %v\n", *localS3URL, err)
-	}
-
-	remotePassword, _ := remoteURL.User.Password()
-	s3RemoteClient := getClient(remoteURL.Host, remoteURL.User.Username(), remotePassword, true)
-
-	localPassword, _ := localURL.User.Password()
-	s3LocalClient := getClient(localURL.Host, localURL.User.Username(), localPassword, false)
+	// create local client
+	s3LocalClient := getClient(*localS3URL, false)
 
 	// create the bucket in both locations, if it doesn't exist
 	upsertBucket(*s3LocalClient, *region, *bucket)
@@ -154,7 +152,7 @@ func main() {
 	addNotification(*s3LocalClient, *region, *bucket)
 
 	natsConnection, _ := nats.Connect(*natsURL)
-	log.Println("Connected to NATS: %s", *natsURL)
+	log.Printf("Connected to NATS: %s\n", *natsURL)
 
 	// Subscribe to subject
 	log.Print("Subscribing to subject 'bucketevents'\n")
@@ -179,6 +177,7 @@ func main() {
 				localFileName := fmt.Sprintf("/%s/%s", *tmpDir, key)
 				log.Printf("syncing object: %s/%s\n", record.S3.Bucket.Name,
 					key)
+
 				err = s3LocalClient.FGetObject(record.S3.Bucket.Name, key,
 					localFileName)
 				if err != nil {
@@ -191,7 +190,6 @@ func main() {
 					fmt.Printf("error uploading file to remote %v\n", err)
 				}
 
-				// remove the file from the filesystem
 				err = os.Remove(localFileName)
 				if err != nil {
 					log.Printf("unable to delete tmp file %s, %v\n", localFileName, err)
@@ -208,13 +206,8 @@ func main() {
 			}
 		}
 
-		// get the object from the local client
-
 	})
 
 	// Keep the connection alive
 	runtime.Goexit()
-
-	// transmit object to remote s3.
-
 }
