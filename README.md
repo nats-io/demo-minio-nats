@@ -8,6 +8,8 @@ from your local desktop to other clouds beyond AWS.
 This demonstration will show you how to run a Minio object store on a local laptop, 
 configure a local NATS message bus and finally replicate objects to other clouds.
 
+![Diagram](/readme_img/diag.png?raw=true "Diagram")
+
 # Tutorial
 
 1. Install and run gnatsd
