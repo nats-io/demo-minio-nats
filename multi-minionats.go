@@ -143,14 +143,14 @@ func main() {
 		}
 
 		for _, record := range notification.Records {
+			key, err := url.QueryUnescape(record.S3.Object.Key)
+			if err != nil {
+				log.Printf("unable to escape key name (%s): %v", record.S3.Object.Key,
+					err)
+			}
 			switch record.EventName {
 			case "s3:ObjectCreated:Put":
-				localFileName := fmt.Sprintf("/tmp/%s", record.S3.Object.Key)
-				key, err := url.QueryUnescape(record.S3.Object.Key)
-				if err != nil {
-					log.Printf("unable to escape key name (%s): %v", record.S3.Object.Key,
-						err)
-				}
+				localFileName := fmt.Sprintf("/tmp/%s", key)
 				log.Printf("syncing object: %s/%s\n", record.S3.Bucket.Name,
 					key)
 				err = s3LocalClient.FGetObject(record.S3.Bucket.Name, key,
@@ -159,17 +159,18 @@ func main() {
 					fmt.Printf("error saving file: %v\n", err)
 				}
 
-				_, err = s3RemoteClient.FPutObject(bucket, record.S3.Object.Key, localFileName,
+				_, err = s3RemoteClient.FPutObject(bucket, key, localFileName,
 					"application/octet-stream")
 				if err != nil {
 					fmt.Printf("error: %v\n", err)
 				}
 			case "s3:ObjectRemoved:Delete":
-				err = s3RemoteClient.RemoveObject(bucket, record.S3.Object.Key)
+				err = s3RemoteClient.RemoveObject(bucket, key)
+
 				if err != nil {
 					log.Printf("error deleting object: %v\n", err)
 				} else {
-					log.Printf("deleted object: %s\n", record.S3.Object.Key)
+					log.Printf("deleted object: %s\n", key)
 				}
 			}
 		}
