@@ -14,7 +14,7 @@ configure a local NATS message bus and finally replicate objects to other clouds
 
 1. Install and run gnatsd
     ```
-    go get github.com/nats-io/gnatsd; gnatsd
+    go get github.com/nats-io/gnatsd; gnatsd -D -V
     ```
 1. Install minio
     ```
@@ -36,8 +36,11 @@ configure a local NATS message bus and finally replicate objects to other clouds
     ...
     ```
 1. Run minio
+    
+    Set ~/minio-tmp/ to any directory you want to store your objects in.
+    
     ```
-    minio
+    minio server ~/minio-tmp/
     ```
 1. Run minioNATS
     ```
@@ -68,6 +71,6 @@ Usage of demo-minio-nats:
     	temporary directory for copying files (default "/tmp/")
 ```
 
-# Future Enhancements
-Configure a load balancer (cloudflare? backbone?) to serve from either the S3 endpoint
-or your local laptop (other cloud) based on availability.
+# Additional Reading
+[Publish Minio Events via NATS](https://blog.minio.io/part-4-5-publish-minio-events-via-nats-79114ea5cd29#.s2sifywij)
+[NATS Blog](http://nats.io/blog/)
