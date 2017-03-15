@@ -24,7 +24,7 @@ configure a local NATS message bus and finally replicate objects to other clouds
     
     edit `~/.minio/config.json`
     
-    set `"enable": true`
+    set `"nats"."1"."enable": true`
     
     ``` json
     ...
