@@ -26,7 +26,7 @@ configure a local NATS message bus and finally replicate objects to other clouds
     
     set `"nats"."1"."enable": true`
     
-    ``` json
+    ``` 
     ...
     "nats": {
         "1": {
@@ -73,4 +73,5 @@ Usage of demo-minio-nats:
 
 # Additional Reading
 [Publish Minio Events via NATS](https://blog.minio.io/part-4-5-publish-minio-events-via-nats-79114ea5cd29#.s2sifywij)
+
 [NATS Blog](http://nats.io/blog/)
