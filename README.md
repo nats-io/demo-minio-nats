@@ -18,7 +18,7 @@ configure a local NATS message bus and finally replicate objects to other clouds
     ```
 1. Install minio
     ```
-    go get minio
+    go get github.com/minio/minio
     ```
 1. Configure minio for local NATS event subscription
     
